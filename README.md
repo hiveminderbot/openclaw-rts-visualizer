@@ -12,6 +12,12 @@ Like [AgentCraft](https://getagentcraft.com/) but for OpenClaw:
 - **Watch real-time progress** — file operations, tool calls, results
 - **Manage lifecycle** — spawn, pause, terminate, respawn
 
+## 🗺️ Screenshot
+
+![RTS Visualizer with Zones](docs/screenshot-zones.png)
+
+*Current implementation showing the 5 zones: Base Camp, Research Forest, Battlefield, Code Factory, and Intel Center*
+
 ## 🗺️ Map Concept
 
 ```
@@ -42,14 +48,15 @@ Like [AgentCraft](https://getagentcraft.com/) but for OpenClaw:
 
 ## 🎯 Features (MVP)
 
-### Phase 1: Basic Visualization
-- [ ] Real-time agent position tracking on map
-- [ ] Health/status bars (idle, running, blocked, done)
-- [ ] Click to inspect agent details
+### Phase 1: Basic Visualization ✅
+- [x] Real-time agent position tracking on map
+- [x] Health/status bars (idle, running, blocked, done)
+- [x] Click to inspect agent details
+- [x] Zone-based organization (Base Camp, Research Forest, Battlefield, Code Factory, Intel Center)
 - [ ] Log stream overlay
 
 ### Phase 2: Command & Control
-- [ ] Right-click context menu (spawn, pause, kill)
+- [x] Right-click context menu (spawn, pause, kill)
 - [ ] Mission assignment (drag to assign task)
 - [ ] Group selection (box select multiple agents)
 - [ ] Hotkeys (RTS-style)
@@ -71,10 +78,27 @@ Like [AgentCraft](https://getagentcraft.com/) but for OpenClaw:
          │                              ┌──────┴──────┐
          │                              │             │
     ┌────┴────┐                    ┌────┴────┐   ┌────┴────┐
-    │  React  │                    │  Main   │   │ SubAgent│
-    │  Canvas │                    │ Session │   │  Spawn  │
-    │  PixiJS │                    │         │   │         │
-    └─────────┘                    └─────────┘   └─────────┘
+│  React  │                    │  Main   │   │ SubAgent│
+│  Canvas │                    │ Session │   │  Spawn  │
+│  PixiJS │                    │         │   │         │
+└─────────┘                    └─────────┘   └─────────┘
+```
+
+## 📁 Current Structure
+
+```
+openclaw-rts-visualizer/
+├── src/
+│   ├── server/
+│   │   └── index.ts          # Express + WebSocket server
+│   └── shared/
+│       └── zones.ts          # Zone definitions & agent positioning
+├── public/
+│   └── index.html            # Canvas-based UI (vanilla JS)
+├── dist/                     # Compiled output
+├── docs/
+│   └── screenshot-zones.png  # Current implementation screenshot
+└── README.md
 ```
 
 ## 🚀 Quick Start

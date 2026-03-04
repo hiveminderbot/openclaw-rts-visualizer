@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw RTS Visualizer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; overflow: hidden; }
+        #game-container { width: 100vw; height: 100vh; position: relative; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+        .panel { position: absolute; background: rgba(0,0,0,0.85); border: 1px solid #444; border-radius: 8px; padding: 12px; pointer-events: auto; }
+        #top-bar { top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; }
+        #resources { display: flex; gap: 20px; }
+        .resource { display: flex; align-items: center; gap: 8px; }
+        #agent-info { bottom: 10px; left: 10px; min-width: 250px; display: none; }
+        #agent-info.visible { display: block; }
+        #minimap { bottom: 10px; right: 10px; width: 200px; height: 150px; }
+        canvas { display: block; }
+        #context-menu { position: absolute; background: rgba(0,0,0,0.95); border: 1px solid #555; border-radius: 4px; padding: 4px 0; display: none; z-index: 200; }
+        #context-menu.visible { display: block; }
+        .menu-item { padding: 8px 16px; cursor: pointer; }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        .menu-item.danger { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="ui-layer">
+            <div id="top-bar" class="panel">
+                <div>🎮 OpenClaw RTS Visualizer</div>
+                <div id="resources">
+                    <div class="resource"><span>👤</span> <span id="agent-count">0</span> agents</div>
+                    <div class="resource"><span>⚡</span> <span id="cpu-usage">0%</span> CPU</div>
+                    <div class="resource"><span>💾</span> <span id="mem-usage">0%</span> RAM</div>
+                </div>
+            </div>
+            <div id="agent-info" class="panel">
+                <strong>Selected Agent</strong>
+                <div id="selected-agent-details">Click an agent to view details</div>
+            </div>
+            <div id="minimap" class="panel">
+                <canvas id="minimap-canvas" width="180" height="130"></canvas>
+            </div>
+        </div>
+        <div id="context-menu">
+            <div class="menu-item" onclick="inspectAgent()">🔍 Inspect</div>
+            <div class="menu-item danger" onclick="killAgent()">💀 Kill</div>
+        </div>
+    </div>
+
+    <script>
+        const state = { agents: [], zones: [], selectedAgent: null, camera: { x: 0, y: 0, zoom: 1 }, ws: null };
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resize);
+        resize();
+
+        async function loadZones() {
+            try {
+                const res = await fetch('/api/zones');
+                state.zones = await res.json();
+            } catch (e) {
+                console.error('Failed to load zones:', e);
+            }
+        }
+
+        function connectWS() {
+            const ws = new WebSocket('ws://' + window.location.host);
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'agents') { state.agents = data.data; updateUI(); }
+            };
+            ws.onclose = () => setTimeout(connectWS, 3000);
+            state.ws = ws;
+        }
+
+        function updateUI() {
+            document.getElementById('agent-count').textContent = state.agents.length;
+        }
+
+        function render() {
+            ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw zones
+            state.zones.forEach(zone => {
+                ctx.fillStyle = zone.color + '20'; // Add transparency
+                ctx.fillRect(zone.x, zone.y, zone.width, zone.height);
+                ctx.strokeStyle = zone.color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(zone.x, zone.y, zone.width, zone.height);
+                
+                ctx.fillStyle = zone.color;
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(zone.name, zone.x + 10, zone.y + 25);
+                
+                ctx.fillStyle = '#888';
+                ctx.font = '11px sans-serif';
+                ctx.fillText(zone.description, zone.x + 10, zone.y + 42);
+            });
+            
+            // Draw agents
+            state.agents.forEach(agent => {
+                const x = agent.x;
+                const y = agent.y;
+                
+                ctx.fillStyle = agent.status === 'running' ? '#4ade80' : agent.status === 'blocked' ? '#ef4444' : '#fbbf24';
+                ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fill();
+                
+                // Health bar
+                ctx.fillStyle = '#333';
+                ctx.fillRect(x - 20, y - 28, 40, 4);
+                ctx.fillStyle = agent.health > 50 ? '#4ade80' : '#ef4444';
+                ctx.fillRect(x - 20, y - 28, 40 * (agent.health / 100), 4);
+                
+                ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+                ctx.fillText(agent.name.substring(0, 12), x, y + 28);
+                
+                if (state.selectedAgent?.id === agent.id) {
+                    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.stroke();
+                }
+            });
+            
+            requestAnimationFrame(render);
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            state.selectedAgent = state.agents.find(a => {
+                const dx = a.x - x; const dy = a.y - y;
+                return Math.sqrt(dx*dx + dy*dy) < 20;
+            });
+            
+            const info = document.getElementById('agent-info');
+            if (state.selectedAgent) {
+                info.classList.add('visible');
+                document.getElementById('selected-agent-details').innerHTML = 
+                    '<strong>' + state.selectedAgent.name + '</strong><br>' +
+                    'Status: ' + state.selectedAgent.status + '<br>' +
+                    'Type: ' + state.selectedAgent.type + '<br>' +
+                    'Health: ' + state.selectedAgent.health + '%';
+            } else {
+                info.classList.remove('visible');
+            }
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const menu = document.getElementById('context-menu');
+            menu.style.left = e.clientX + 'px';
+            menu.style.top = e.clientY + 'px';
+            menu.classList.add('visible');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#context-menu')) {
+                document.getElementById('context-menu').classList.remove('visible');
+            }
+        });
+
+        function inspectAgent() {
+            if (state.selectedAgent) alert('Inspecting: ' + state.selectedAgent.name);
+            document.getElementById('context-menu').classList.remove('visible');
+        }
+
+        function killAgent() {
+            if (state.selectedAgent && state.ws) {
+                state.ws.send(JSON.stringify({ type: 'command', command: 'kill', sessionKey: state.selectedAgent.id }));
+            }
+            document.getElementById('context-menu').classList.remove('visible');
+        }
+
+        setInterval(async () => {
+            try {
+                const res = await fetch('/api/system');
+                const data = await res.json();
+                document.getElementById('cpu-usage').textContent = data.cpu.toFixed(1) + '%';
+                document.getElementById('mem-usage').textContent = data.memory.toFixed(1) + '%';
+            } catch (e) {}
+        }, 2000);
+
+        loadZones();
+        connectWS();
+        render();
+    </script>
+</body>
+</html>
